@@ -1,0 +1,65 @@
+{
+  "name": "type-flash",
+  "version": "1.2.2",
+  "description": "极速智能的 TypeScript 类型生成器，支持深度解析对象 / JSON / 接口返回，一行代码搞定，让类型定义一键生成，彻底告别手写类型的繁琐。",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "type-flash": "bin/type-flash.js"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean --minify",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "prepublishOnly": "npm run build",
+    "release": "npm run build && npm publish",
+    "release:patch": "npm version patch && npm run release",
+    "release:minor": "npm version minor && npm run release",
+    "release:major": "npm version major && npm run release"
+  },
+  "keywords": [
+    "type-flash",
+    "typescript",
+    "类型生成",
+    "json",
+    "type-flasherator",
+    "ts类型定义",
+    "typescript-generator",
+    "ts类型生成器",
+    "interface",
+    "类型推断",
+    "type",
+    "ts",
+    "自动生成ts类型",
+    "json-to-ts",
+    "接口类型生成",
+    "type-inference"
+  ],
+  "author": "lebron_shi",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
+  }
+}
