@@ -1,6 +1,6 @@
 {
   "name": "type-flash",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "极速智能的 TypeScript 类型生成器，支持深度解析对象 / JSON / 接口返回，一行代码搞定，让类型定义一键生成，彻底告别手写类型的繁琐。",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -43,7 +43,7 @@
   ],
   "author": "lebron_shi",
   "license": "MIT",
-   "repository": {
+  "repository": {
     "type": "git",
     "url": "https://github.com/shilimingY/type-flash.git"
   },
