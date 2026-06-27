@@ -8,7 +8,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
 
-> 自动生成 TypeScript 类型定义，支持对象 / JSON / 接口返回，一行代码搞定，彻底告别手写类型的繁琐。
+> 自动生成 TypeScript 类型定义，支持对象 / JSON / 接口返回，内置 CLI 命令行工具，一行代码搞定，彻底告别手写类型的繁琐。
 
 [功能特性](#功能特性) • [快速开始](#快速开始) • [使用方式](#使用方式) • [配置选项](#配置选项) • [优势对比](#优势对比) • [常见问题](#常见问题)
 
