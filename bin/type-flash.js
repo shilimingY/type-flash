@@ -22,7 +22,6 @@ function parseArgs() {
     namingStyle: 'PascalCase',
     sortProperties: 'alpha',
     addExport: true,
-    strictNullChecks: false,
     markOptional: true,
     indentSize: 2,
     typePrefix: '',
@@ -60,9 +59,6 @@ function parseArgs() {
         break;
       case '--no-export':
         options.addExport = false;
-        break;
-      case '--strict-null':
-        options.strictNullChecks = true;
         break;
       case '--no-optional':
         options.markOptional = false;
@@ -110,7 +106,6 @@ type-flash - JSON 智能生成 TypeScript 类型定义
       --naming-style <s>   命名风格: PascalCase | camelCase (默认: PascalCase)
       --sort <order>       属性排序: alpha | definition (默认: alpha)
       --no-export          不添加 export 语句
-      --strict-null        严格空值模式
       --no-optional        不标记可选属性
       --indent <n>         缩进空格数 (默认: 2)
       --prefix <prefix>    类型名前缀
@@ -136,28 +131,27 @@ function showVersion() {
   }
 }
 
-// 读取标准输入
+// 读取标准输入（仅在管道模式下等待数据，TTY 下立即返回空）
 function readStdin() {
   return new Promise((resolve, reject) => {
+    if (process.stdin.isTTY) {
+      resolve('');
+      return;
+    }
+
     let data = '';
     process.stdin.setEncoding('utf-8');
-    
+    process.stdin.resume();
+
     process.stdin.on('data', chunk => {
       data += chunk;
     });
-    
+
     process.stdin.on('end', () => {
       resolve(data);
     });
-    
+
     process.stdin.on('error', reject);
-    
-    // 如果没有输入，超时返回空
-    setTimeout(() => {
-      if (!data) {
-        resolve('');
-      }
-    }, 100);
   });
 }
 
@@ -234,7 +228,6 @@ async function main() {
       namingStyle: options.namingStyle,
       sortProperties: options.sortProperties,
       addExport: options.addExport,
-      strictNullChecks: options.strictNullChecks,
       markOptional: options.markOptional,
       indentSize: options.indentSize,
       typePrefix: options.typePrefix,

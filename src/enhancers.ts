@@ -1,91 +1,21 @@
 /**
  * type-flash - 增强功能模块
- * 
+ *
  * 核心功能：
- * - 泛型提取（如 PageResult<T>）
- * - 空值处理
  * - 可选属性处理
  */
 
-import type { 
-  TSTypeNode, 
-  ObjectType, 
-  ArrayType, 
-  GenericType,
-  PrimitiveType,
-  GenerateOptions 
+import type {
+  TSTypeNode,
+  ObjectType,
+  GenerateOptions,
 } from '../types';
-
-/**
- * 空值处理器
- */
-export class NullHandler {
-  private strict: boolean;
-  // 循环对象缓存，防止循环引用无限递归爆栈
-  private seen = new WeakSet<ObjectType>();
-
-  constructor(strict: boolean = false) {
-    this.strict = strict;
-  }
-
-  process(type: TSTypeNode): TSTypeNode {
-    // 调用内部递归方法，传入空缓存
-    return this.processRecursive(type);
-  }
-
-  // 内部递归函数，增加循环检测逻辑
-  private processRecursive(type: TSTypeNode): TSTypeNode {
-    if (this.strict) {
-      return type;
-    }
-
-    // 联合类型中移除 null
-    if (type.kind === 'union') {
-      const nonNullTypes = type.types.filter(t => t.kind !== 'null');
-      if (nonNullTypes.length === 0) {
-        return { kind: 'null' };
-      }
-      if (nonNullTypes.length === 1) {
-        return nonNullTypes[0];
-      }
-      return { ...type, types: nonNullTypes.map(t => this.processRecursive(t)) };
-    }
-
-    // 递归处理
-    if (type.kind === 'array') {
-      return {
-        ...type,
-        elementType: this.processRecursive(type.elementType),
-      };
-    }
-
-    if (type.kind === 'object') {
-      // 循环引用拦截
-      if (this.seen.has(type)) return type;
-      this.seen.add(type);
-
-      const resultObj = {
-        ...type,
-        properties: type.properties.map(prop => ({
-          ...prop,
-          type: this.processRecursive(prop.type),
-        })),
-      };
-
-      this.seen.delete(type);
-      return resultObj;
-    }
-
-    return type;
-  }
-}
 
 /**
  * 可选属性处理器
  */
 export class OptionalHandler {
   private markOptional: boolean;
-  // 循环对象缓存，防止循环引用无限递归爆栈
   private seen = new WeakSet<ObjectType>();
 
   constructor(markOptional: boolean = true) {
@@ -96,49 +26,86 @@ export class OptionalHandler {
     if (!this.markOptional) {
       return type;
     }
-    // 调用带缓存的递归处理
     return this.processRecursive(jsonData, type);
   }
 
-  // 递归处理方法，增加循环检测
   private processRecursive(data: any, type: TSTypeNode): TSTypeNode {
-    // 数组中的对象，根据字段出现频率判断是否可选
     if (type.kind === 'array' && Array.isArray(data)) {
-      const elementType = type.elementType;
+      const { elementType } = type;
       if (elementType.kind === 'object') {
-        const newElementType = this.processArrayObjects(data, elementType);
+        let newElementType = data.length > 1
+          ? this.processArrayObjects(data, elementType)
+          : elementType;
+        for (const item of data) {
+          if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
+            newElementType = this.processRecursive(item, newElementType) as ObjectType;
+          }
+        }
         return { ...type, elementType: newElementType };
       }
-      // 递归处理数组子类型
       return {
         ...type,
-        elementType: this.processRecursive(data, elementType)
+        elementType: this.processRecursive(data[0], elementType),
       };
     }
 
-    // 递归处理对象属性，拦截循环引用
-    if (type.kind === 'object' && data && typeof data === 'object') {
+    if (type.kind === 'object' && data && typeof data === 'object' && !Array.isArray(data)) {
       if (this.seen.has(type)) return type;
       this.seen.add(type);
 
-      const newProps = type.properties.map(prop => ({
-        ...prop,
-        type: this.processRecursive((data as Record<string, any>)[prop.name], prop.type)
-      }));
+      const resultObj: ObjectType = {
+        ...type,
+        properties: type.properties.map(prop => {
+          if (prop.type === type) {
+            return { ...prop };
+          }
+          return {
+            ...prop,
+            type: this.processRecursive((data as Record<string, any>)[prop.name], prop.type),
+          };
+        }),
+      };
+
+      for (const prop of resultObj.properties) {
+        prop.type = this.relinkReferences(prop.type, type, resultObj);
+      }
 
       this.seen.delete(type);
-      return { ...type, properties: newProps };
+      return resultObj;
     }
 
-    // 联合类型递归子节点
     if (type.kind === 'union' && Array.isArray(data)) {
       return {
         ...type,
-        types: type.types.map(subType => this.processRecursive(data, subType))
+        types: type.types.map(subType => this.processRecursive(data, subType)),
       };
     }
 
     return type;
+  }
+
+  /** 将子树中对 oldRef 的引用替换为 newRef，保持循环引用一致 */
+  private relinkReferences(node: TSTypeNode, oldRef: TSTypeNode, newRef: TSTypeNode): TSTypeNode {
+    if (node === oldRef) {
+      return newRef;
+    }
+
+    switch (node.kind) {
+      case 'array':
+        return { ...node, elementType: this.relinkReferences(node.elementType, oldRef, newRef) };
+      case 'object':
+        return {
+          ...node,
+          properties: node.properties.map(prop => ({
+            ...prop,
+            type: this.relinkReferences(prop.type, oldRef, newRef),
+          })),
+        };
+      case 'union':
+        return { ...node, types: node.types.map(t => this.relinkReferences(t, oldRef, newRef)) };
+      default:
+        return node;
+    }
   }
 
   private processArrayObjects(items: any[], objType: ObjectType): ObjectType {
@@ -172,17 +139,10 @@ export class OptionalHandler {
  * 应用所有增强功能
  */
 export function applyEnhancements(jsonData: any, type: TSTypeNode, options: GenerateOptions): TSTypeNode {
-  let result = type;
-
-  // 1. 可选属性处理
-  if (options.markOptional) {
-    const optionalHandler = new OptionalHandler(options.markOptional);
-    result = optionalHandler.process(jsonData, result);
+  if (!options.markOptional) {
+    return type;
   }
 
-  // 3. 空值处理
-  const nullHandler = new NullHandler(options.strictNullChecks);
-  result = nullHandler.process(result);
-
-  return result;
+  const optionalHandler = new OptionalHandler(options.markOptional);
+  return optionalHandler.process(jsonData, type);
 }

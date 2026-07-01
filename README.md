@@ -8,7 +8,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
 
-> 自动生成 TypeScript 类型定义，支持对象 / JSON / 接口返回，内置 CLI 命令行工具，一行代码搞定，彻底告别手写类型的繁琐。
+> 自动生成 TypeScript 类型定义，支持解析对象 / JSON / 接口返回，内置 CLI 命令行工具，一行代码搞定，彻底告别手写类型的繁琐。
 
 [功能特性](#功能特性) • [快速开始](#快速开始) • [使用方式](#使用方式) • [配置选项](#配置选项) • [优势对比](#优势对比) • [常见问题](#常见问题)
 
@@ -188,13 +188,13 @@ export interface ApiResponseDataListItem {
 // user.json
 {
   "id": 1,
-  "name": 'Alice',
-  "email": 'alice@example.com',
+  "name": "Alice",
+  "email": "alice@example.com",
   "profile": {
-    "avatar": 'https://example.com/avatar.jpg',
-    "bio": 'Hello World',
+    "avatar": "https://example.com/avatar.jpg",
+    "bio": "Hello World",
   },
-  "tags": ['admin', 'user', 88],
+  "tags": ["admin", "user", 88],
 };
 ```
 
@@ -215,9 +215,6 @@ type-flash -i user.json -s type
 #### 常用选项示例
 
 ```bash
-# 严格空值模式（保留 null 为独立类型）
-type-flash -i user.json --strict-null
-
 # 添加类型前缀/后缀
 type-flash -i user.json --prefix I --suffix DTO -o user.ts
 
@@ -279,7 +276,6 @@ curl.exe https://api.example.com/users | type-flash -n UserList
 | `--naming-style <s>` | 命名风格: `PascalCase` \| `camelCase` | `PascalCase` |
 | `--sort <order>` | 属性排序: `alpha` \| `definition` | `alpha` |
 | `--no-export` | 不添加 export 关键字 | - |
-| `--strict-null` | 严格空值模式（保留 null 类型） | - |
 | `--no-optional` | 不标记可选属性 | - |
 | `--indent <n>` | 缩进空格数 | `2` |
 | `--prefix <prefix>` | 类型名前缀 | - |
@@ -300,7 +296,6 @@ curl.exe https://api.example.com/users | type-flash -n UserList
 | `namingStyle` | `'PascalCase' \| 'camelCase'` | `'PascalCase'` | 生成的类型名命名风格 |
 | `sortProperties` | `'alpha' \| 'definition'` | `'alpha'` | 属性排序方式，字母序或定义序 |
 | `addExport` | `boolean` | `true` | 是否添加 export 关键字 |
-| `strictNullChecks` | `boolean` | `false` | 是否启用严格空值模式，保留 null 为独立类型 |
 | `markOptional` | `boolean` | `true` | 是否自动标记可选属性 |
 | `indentSize` | `number` | `2` | 缩进空格数 |
 | `lineEnding` | `string` | `'\n'` | 行尾换行符 |
@@ -349,9 +344,6 @@ const code = generate(jsonData, {
 
 ### Q: 生成的类型名为什么是 UserProfile 而不是 Profile？
 A: type-flash 默认会用父级类型名 + 字段名来生成子类型名，避免重名。如果想自定义类型名，可以使用 `typeNameMap` 配置。
-
-### Q: 为什么数组里的 null 被去掉了？
-A: 默认情况下 `strictNullChecks` 为 `false`，会自动移除 null 类型。如果需要保留 null，可以设置 `strictNullChecks: true`。
 
 ### Q: 支持循环引用的 JSON 吗？
 A: 支持。type-flash 会自动检测循环引用并生成合法的 type alias，不会出现栈溢出。

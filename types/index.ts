@@ -9,7 +9,7 @@
  */
 export interface PrimitiveType {
   kind: 'primitive';
-  type: 'string' | 'number' | 'boolean' | 'any' | 'unknown' | 'never' | 'function';
+  type: 'string' | 'number' | 'boolean' | 'any' | 'unknown' | 'never' | 'Function';
 }
 
 /**
@@ -130,9 +130,6 @@ export interface GenerateOptions {
   /** 是否添加 export 语句，默认 true */
   addExport?: boolean;
   
-  /** 是否严格空值（null 单独类型），默认 false */
-  strictNullChecks?: boolean;
-  
   /** 是否将可选属性标记为 ?，默认 true */
   markOptional?: boolean;
   
@@ -161,7 +158,6 @@ export const DEFAULT_OPTIONS: Required<GenerateOptions> = {
   namingStyle: 'PascalCase',
   sortProperties: 'alpha',
   addExport: true,
-  strictNullChecks: false,
   markOptional: true,
   indentSize: 2,
   lineEnding: '\n',

@@ -24,7 +24,7 @@ export function generate(jsonData: any, options: GenerateOptions = {}): string {
   // 2. 推断基础类型
   let rootType = inferType(jsonData);
 
-  // 3. 应用增强功能（可选属性、泛型、空值处理）
+  // 3. 应用增强功能（可选属性）
   rootType = applyEnhancements(jsonData, rootType, opts);
 
   // 4. 创建命名器
@@ -83,7 +83,6 @@ export {
   isStructurallyEqual,
 } from './type-inferrer';
 export {
-  NullHandler,
   OptionalHandler,
   applyEnhancements,
 } from './enhancers';

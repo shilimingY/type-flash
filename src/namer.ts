@@ -9,7 +9,7 @@
  */
 
 import type { TSTypeNode, ObjectType, NamingStyle, NamedTypeDef } from '../types/index';
-import { isStructurallyEqual, cloneType } from './type-inferrer';
+import { isStructurallyEqual, cloneType, typeToKey } from './type-inferrer';
 
 /**
  * 命名上下文
@@ -103,6 +103,13 @@ export class TypeNamer {
   }
 
   /**
+   * 注册结构 key 别名（用于结构等价但 key 不同的类型复用同一名称）
+   */
+  registerStructKey(structKey: string, name: string): void {
+    this.namedTypes.set(structKey, name);
+  }
+
+  /**
    * 生成类型名
    */
   private generateName(type: TSTypeNode, context: NamingContext): string {
@@ -167,38 +174,14 @@ export class TypeNamer {
    * 获取类型的结构 key
    */
   private getTypeKey(type: TSTypeNode): string {
-    // 使用结构等价性的 key
-    if (type.kind === 'object') {
-      return `object:${type.properties
-        .map(p => `${p.name}:${this.getSimpleTypeKey(p.type)}:${p.optional}`)
-        .sort()
-        .join(',')}`;
-    }
-    return type.kind;
+    return typeToKey(type);
   }
 
   /**
-   * 获取简单类型 key（用于属性比较）
+   * 获取简单类型 key（用于属性比较，与 typeToKey 保持一致）
    */
   private getSimpleTypeKey(type: TSTypeNode): string {
-    switch (type.kind) {
-      case 'primitive':
-        return type.type;
-      case 'null':
-        return 'null';
-      case 'undefined':
-        return 'undefined';
-      case 'array':
-        return `array<${this.getSimpleTypeKey(type.elementType)}>`;
-      case 'object':
-        return 'object'; // 对象类型只标记为 object，不深入比较
-      case 'union':
-        return type.types.map(t => this.getSimpleTypeKey(t)).sort().join('|');
-      case 'generic':
-        return `generic:${type.name}`;
-      default:
-        return 'unknown';
-    }
+    return typeToKey(type);
   }
 
   /**
@@ -333,6 +316,12 @@ export class TypeCollector {
 
     // 对象类型
     if (type.kind === 'object') {
+      const existing = this.collected.find(d => isStructurallyEqual(d.type, type));
+      if (existing) {
+        this.namer.registerStructKey(structKey, existing.name);
+        return;
+      }
+
       const name = this.namer.nameType(type, context);
       
       if (name && !this.seenStructs.has(structKey)) {
@@ -392,37 +381,7 @@ export class TypeCollector {
    * 获取结构 key（用于去重）
    */
   private getStructKey(type: TSTypeNode): string {
-    if (type.kind === 'object') {
-      return `object:${type.properties
-        .map(p => `${p.name}:${this.getPropTypeKey(p.type)}:${p.optional}`)
-        .sort()
-        .join('|')}`;
-    }
-    return type.kind;
-  }
-
-  /**
-   * 获取属性类型的简化 key
-   */
-  private getPropTypeKey(type: TSTypeNode): string {
-    switch (type.kind) {
-      case 'primitive':
-        return type.type;
-      case 'null':
-        return 'null';
-      case 'undefined':
-        return 'undefined';
-      case 'array':
-        return `array:${this.getPropTypeKey(type.elementType)}`;
-      case 'object':
-        return 'object';
-      case 'union':
-        return type.types.map(t => this.getPropTypeKey(t)).sort().join('|');
-      case 'generic':
-        return `generic:${type.name}`;
-      default:
-        return 'unknown';
-    }
+    return typeToKey(type);
   }
 }
 

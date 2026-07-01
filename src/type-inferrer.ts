@@ -69,7 +69,7 @@ export function createObject(properties: PropertyDef[] = []): ObjectType {
 /**
  * 创建联合类型节点
  */
-export function createUnion(types: TSTypeNode[]): UnionType {
+export function createUnion(types: TSTypeNode[]): TSTypeNode {
   // 去重与扁平化
   const flattened: TSTypeNode[] = [];
   const seen = new Set<string>();
@@ -95,16 +95,20 @@ export function createUnion(types: TSTypeNode[]): UnionType {
 
   // 只有一个类型时直接返回
   if (flattened.length === 1) {
-    return flattened[0] as UnionType;
+    return flattened[0];
   }
 
   return { kind: 'union', types: flattened };
 }
 
 /**
- * 类型节点转字符串 key（用于去重比较）
+ * 类型节点转字符串 key（用于去重比较，支持循环引用）
  */
-function typeToKey(type: TSTypeNode): string {
+export function typeToKey(type: TSTypeNode, visiting = new Set<TSTypeNode>()): string {
+  if (visiting.has(type)) {
+    return 'circular';
+  }
+
   switch (type.kind) {
     case 'primitive':
       return `primitive:${type.type}`;
@@ -115,13 +119,25 @@ function typeToKey(type: TSTypeNode): string {
     case 'literal':
       return `literal:${typeof type.value}:${String(type.value)}`;
     case 'array':
-      return `array:${typeToKey(type.elementType)}`;
-    case 'object':
-      return `object:${type.properties.map(p => `${p.name}:${typeToKey(p.type)}:${p.optional}`).join(',')}`;
+      return `array:${typeToKey(type.elementType, visiting)}`;
+    case 'object': {
+      visiting.add(type);
+      const key = `object:${type.properties
+        .map(p => {
+          if (p.type === type || visiting.has(p.type)) {
+            return `${p.name}:self:${p.optional}`;
+          }
+          return `${p.name}:${typeToKey(p.type, visiting)}:${p.optional}`;
+        })
+        .sort()
+        .join(',')}`;
+      visiting.delete(type);
+      return key;
+    }
     case 'union':
-      return `union:${type.types.map(typeToKey).sort().join('|')}`;
+      return `union:${type.types.map(t => typeToKey(t, visiting)).sort().join('|')}`;
     case 'generic':
-      return `generic:${type.name}:${type.typeArgs.map(typeToKey).join(',')}`;
+      return `generic:${type.name}:${type.typeArgs.map(t => typeToKey(t, visiting)).join(',')}`;
     default:
       return 'unknown';
   }
@@ -191,11 +207,36 @@ export function mergeObjects(a: ObjectType, b: ObjectType): ObjectType {
   return createObject(Array.from(propsMap.values()));
 }
 
+/** 内置对象类型映射为 TS 原始类型 */
+function inferBuiltinObjectType(value: object): PrimitiveType | null {
+  if (value instanceof Date) {
+    return createPrimitive('string');
+  }
+  if (value instanceof RegExp) {
+    return createPrimitive('string');
+  }
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) {
+    return createPrimitive('string');
+  }
+  const tag = Object.prototype.toString.call(value);
+  if (tag === '[object Date]' || tag === '[object RegExp]') {
+    return createPrimitive('string');
+  }
+  if (tag === '[object Map]' || tag === '[object Set]' || tag === '[object WeakMap]' || tag === '[object WeakSet]') {
+    return createPrimitive('unknown');
+  }
+  return null;
+}
+
 /**
  * 推断单个值的类型
- * seen 循环缓存参数，默认新建 WeakSet
+ * seen / objectCache 用于循环引用检测与自引用类型占位
  */
-export function inferType(value: unknown, seen = new WeakSet<object>()): TSTypeNode {
+export function inferType(
+  value: unknown,
+  seen = new WeakSet<object>(),
+  objectCache = new WeakMap<object, ObjectType>()
+): TSTypeNode {
   if (value === null) {
     return createNull();
   }
@@ -205,7 +246,7 @@ export function inferType(value: unknown, seen = new WeakSet<object>()): TSTypeN
   }
 
   if (typeof value === 'function') {
-    return createPrimitive('function');
+    return createPrimitive('Function');
   }
 
   if (typeof value === 'string') {
@@ -221,20 +262,39 @@ export function inferType(value: unknown, seen = new WeakSet<object>()): TSTypeN
   }
 
   if (Array.isArray(value)) {
-    // 传入 seen 缓存
-    return inferArrayType(value, seen);
+    return inferArrayType(value, seen, objectCache);
   }
 
   if (typeof value === 'object' && value !== null) {
-    const obj = value as Record<string, unknown>;
-    // 检测循环引用：已遍历过直接返回空对象类型，阻断无限递归
-    if (seen.has(obj)) {
-      return { kind: 'object', properties: [] };
+    const builtinType = inferBuiltinObjectType(value);
+    if (builtinType) {
+      return builtinType;
     }
+
+    const obj = value as Record<string, unknown>;
+    if (seen.has(obj)) {
+      const cached = objectCache.get(obj);
+      if (cached) {
+        return cached;
+      }
+    }
+
     seen.add(obj);
-    const result = inferObjectType(obj, seen);
+    const placeholder = createObject([]);
+    objectCache.set(obj, placeholder);
+
+    const properties: PropertyDef[] = [];
+    for (const [key, val] of Object.entries(obj)) {
+      properties.push({
+        name: key,
+        type: inferType(val, seen, objectCache),
+        optional: false,
+      });
+    }
+    placeholder.properties = properties;
+
     seen.delete(obj);
-    return result;
+    return placeholder;
   }
 
   return createPrimitive('unknown');
@@ -245,16 +305,19 @@ export function inferType(value: unknown, seen = new WeakSet<object>()): TSTypeN
  * - 统一提取元素类型
  * - 元素类型不一致时生成联合类型
  */
-export function inferArrayType(arr: unknown[], seen: WeakSet<object>): ArrayType {
+export function inferArrayType(
+  arr: unknown[],
+  seen: WeakSet<object>,
+  objectCache = new WeakMap<object, ObjectType>()
+): ArrayType {
   if (arr.length === 0) {
     return {
       kind: 'array',
-      elementType: { kind: 'primitive', type: 'any' }
+      elementType: { kind: 'primitive', type: 'unknown' }
     };
   }
 
-  // 推断每个元素的类型，传入共享seen缓存
-  const elementTypes = arr.map(item => inferType(item, seen));
+  const elementTypes = arr.map(item => inferType(item, seen, objectCache));
 
   // 合并所有元素类型
   let unifiedType = elementTypes[0];
@@ -271,20 +334,13 @@ export function inferArrayType(arr: unknown[], seen: WeakSet<object>): ArrayType
 /**
  * 推断对象类型
  */
-export function inferObjectType(obj: Record<string, unknown>, seen: WeakSet<object>): ObjectType {
-  const properties: PropertyDef[] = [];
-
-  for (const [key, value] of Object.entries(obj)) {
-    // 递归推断子类型，传递循环引用缓存seen
-    const type = inferType(value, seen);
-    properties.push({
-      name: key,
-      type,
-      optional: false,
-    });
-  }
-
-  return createObject(properties);
+export function inferObjectType(
+  obj: Record<string, unknown>,
+  seen: WeakSet<object> = new WeakSet(),
+  objectCache: WeakMap<object, ObjectType> = new WeakMap()
+): ObjectType {
+  const result = inferType(obj, seen, objectCache);
+  return result as ObjectType;
 }
 
 /**
@@ -309,6 +365,9 @@ export function inferUnionType(values: unknown[]): TSTypeNode {
  * 用于类型去重与复用
  */
 export function isStructurallyEqual(a: TSTypeNode, b: TSTypeNode): boolean {
+  if (a === b) {
+    return true;
+  }
   return typeToKey(a) === typeToKey(b);
 }
 
@@ -321,23 +380,6 @@ export function containsNull(type: TSTypeNode): boolean {
     return type.types.some(t => t.kind === 'null');
   }
   return false;
-}
-
-/**
- * 从类型中移除 null（非严格空值模式）
- */
-export function removeNull(type: TSTypeNode): TSTypeNode {
-  if (type.kind === 'null') {
-    // 只有 null 时返回 any？或者保留 null
-    return type;
-  }
-  if (type.kind === 'union') {
-    const filtered = type.types.filter(t => t.kind !== 'null');
-    if (filtered.length === 0) return createPrimitive('unknown');
-    if (filtered.length === 1) return filtered[0];
-    return createUnion(filtered);
-  }
-  return type;
 }
 
 /**
